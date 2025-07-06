@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -20,9 +18,10 @@ from mlxtend.preprocessing import TransactionEncoder
 
 st.set_page_config(page_title="Hospitality Analytics Dashboard", layout="wide")
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def load_data():
-    return pd.read_csv("data/Hospitality_Synthetic_Survey.csv")
+    df = pd.read_csv("data/Hospitality_Synthetic_Survey.csv")
+    return df.sample(n=500, random_state=42)  # limit rows to improve performance
 
 df = load_data()
 st.sidebar.title("Navigation")
@@ -31,110 +30,111 @@ tabs = st.sidebar.radio("Go to", ["Data Visualization", "Classification", "Clust
 # ---------------------- 1. DATA VISUALIZATION ----------------------
 if tabs == "Data Visualization":
     st.title("📊 Data Visualization")
-    st.subheader("1. Age Group Distribution")
-    st.bar_chart(df['Age Group'].value_counts())
 
-    st.subheader("2. Income vs Comfort Spend Range")
-    fig1 = px.histogram(df, x="Monthly Income", color="Comfort Spend Range", barmode='group')
-    st.plotly_chart(fig1)
+    with st.expander("1. Age Group Distribution"):
+        st.bar_chart(df['Age Group'].value_counts())
 
-    st.subheader("3. Loyalty Tier Distribution")
-    st.bar_chart(df['Loyalty Tier'].value_counts())
+    with st.expander("2. Income vs Comfort Spend Range"):
+        fig1 = px.histogram(df, x="Monthly Income", color="Comfort Spend Range", barmode='group')
+        st.plotly_chart(fig1)
 
-    st.subheader("4. Service Usage")
-    service_counts = pd.Series(', '.join(df['Services Used']).split(', ')).value_counts()
-    st.bar_chart(service_counts)
+    with st.expander("3. Loyalty Tier Distribution"):
+        st.bar_chart(df['Loyalty Tier'].value_counts())
 
-    st.subheader("5. Booking Channel vs Room Type")
-    fig2 = px.histogram(df, x="Booking Channel", color="Preferred Room Type", barmode='group')
-    st.plotly_chart(fig2)
+    with st.expander("4. Service Usage"):
+        service_counts = pd.Series(', '.join(df['Services Used']).split(', ')).value_counts()
+        st.bar_chart(service_counts)
 
-    st.subheader("6. Overall Experience Rating")
-    st.bar_chart(df['Overall Experience Rating'].value_counts())
+    with st.expander("5. Booking Channel vs Room Type"):
+        fig2 = px.histogram(df, x="Booking Channel", color="Preferred Room Type", barmode='group')
+        st.plotly_chart(fig2)
 
-    st.subheader("7. Correlation Heatmap (Numerical Ratings Only)")
-    numeric_cols = df.select_dtypes(include=np.number)
-    fig3, ax = plt.subplots()
-    sns.heatmap(numeric_cols.corr(), annot=True, cmap="coolwarm", ax=ax)
-    st.pyplot(fig3)
+    with st.expander("6. Overall Experience Rating"):
+        st.bar_chart(df['Overall Experience Rating'].value_counts())
 
-    st.subheader("8. Willingness to Try Offers vs Loyalty Program")
-    fig4 = px.histogram(df, x="Willing to Try Offers", color="In Loyalty Program", barmode='group')
-    st.plotly_chart(fig4)
+    with st.expander("7. Correlation Heatmap (Numerical Ratings Only)"):
+        numeric_cols = df.select_dtypes(include=np.number)
+        fig3, ax = plt.subplots()
+        sns.heatmap(numeric_cols.corr(), annot=True, cmap="coolwarm", ax=ax)
+        st.pyplot(fig3)
 
-    st.subheader("9. Frequent Issues Faced by Guests")
-    issues_counts = pd.Series(', '.join(df['Issues Faced']).split(', ')).value_counts()
-    st.bar_chart(issues_counts.head(10))
+    with st.expander("8. Willingness to Try Offers vs Loyalty Program"):
+        fig4 = px.histogram(df, x="Willing to Try Offers", color="In Loyalty Program", barmode='group')
+        st.plotly_chart(fig4)
 
-    st.subheader("10. Service Time Preferences")
-    st.bar_chart(df['Service Time'].value_counts())
+    with st.expander("9. Frequent Issues Faced by Guests"):
+        issues_counts = pd.Series(', '.join(df['Issues Faced']).split(', ')).value_counts()
+        st.bar_chart(issues_counts.head(10))
+
+    with st.expander("10. Service Time Preferences"):
+        st.bar_chart(df['Service Time'].value_counts())
 
 # ---------------------- 2. CLASSIFICATION ----------------------
 elif tabs == "Classification":
     st.title("🤖 Classification Models")
-    df_clf = df.copy()
-    df_clf = df_clf[df_clf['Willing to Try Offers'].isin(['Yes', 'No'])]
-    label_cols = df_clf.select_dtypes(include='object').columns.drop(['Willing to Try Offers', 'Services Used', 'Preferred Bundles', 'Issues Faced', 'Nationality'])
 
-    for col in label_cols:
-        df_clf[col] = LabelEncoder().fit_transform(df_clf[col])
+    if st.button("Run Classification Models"):
+        df_clf = df[df['Willing to Try Offers'].isin(['Yes', 'No'])].copy()
+        label_cols = df_clf.select_dtypes(include='object').columns.drop(['Willing to Try Offers', 'Services Used', 'Preferred Bundles', 'Issues Faced', 'Nationality'])
 
-    X = df_clf.drop(columns=['Willing to Try Offers', 'Services Used', 'Preferred Bundles', 'Issues Faced', 'Nationality'])
-    y = LabelEncoder().fit_transform(df_clf['Willing to Try Offers'])
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    models = {
-        "KNN": KNeighborsClassifier(),
-        "Decision Tree": DecisionTreeClassifier(),
-        "Random Forest": RandomForestClassifier(),
-        "Gradient Boosting": GradientBoostingClassifier()
-    }
-
-    st.subheader("Model Evaluation Table")
-    results = []
-    for name, model in models.items():
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
-        results.append({
-            "Model": name,
-            "Accuracy": accuracy_score(y_test, y_pred),
-            "Precision": precision_score(y_test, y_pred),
-            "Recall": recall_score(y_test, y_pred),
-            "F1-Score": f1_score(y_test, y_pred)
-        })
-
-    st.dataframe(pd.DataFrame(results))
-
-    st.subheader("Confusion Matrix")
-    model_choice = st.selectbox("Choose model", list(models.keys()))
-    cm = confusion_matrix(y_test, models[model_choice].predict(X_test))
-    fig_cm, ax = plt.subplots()
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-    st.pyplot(fig_cm)
-
-    st.subheader("ROC Curve")
-    fig_roc = go.Figure()
-    for name, model in models.items():
-        y_score = model.predict_proba(X_test)[:, 1]
-        fpr, tpr, _ = roc_curve(y_test, y_score)
-        fig_roc.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=name))
-    fig_roc.update_layout(title='ROC Curve', xaxis_title='False Positive Rate', yaxis_title='True Positive Rate')
-    st.plotly_chart(fig_roc)
-
-    st.subheader("Upload New Data for Prediction")
-    uploaded_file = st.file_uploader("Upload CSV without target variable")
-    if uploaded_file:
-        new_data = pd.read_csv(uploaded_file)
-        new_data_encoded = new_data.copy()
         for col in label_cols:
-            if col in new_data_encoded.columns:
-                new_data_encoded[col] = LabelEncoder().fit_transform(new_data_encoded[col])
-        prediction = models[model_choice].predict(new_data_encoded)
-        new_data['Prediction'] = prediction
-        st.dataframe(new_data)
-        csv_out = new_data.to_csv(index=False).encode('utf-8')
-        st.download_button("Download Predictions", data=csv_out, file_name="predictions.csv", mime="text/csv")
+            df_clf[col] = LabelEncoder().fit_transform(df_clf[col])
+
+        X = df_clf.drop(columns=['Willing to Try Offers', 'Services Used', 'Preferred Bundles', 'Issues Faced', 'Nationality'])
+        y = LabelEncoder().fit_transform(df_clf['Willing to Try Offers'])
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        models = {
+            "KNN": KNeighborsClassifier(),
+            "Decision Tree": DecisionTreeClassifier(),
+            "Random Forest": RandomForestClassifier(),
+            "Gradient Boosting": GradientBoostingClassifier()
+        }
+
+        st.subheader("Model Evaluation Table")
+        results = []
+        for name, model in models.items():
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            results.append({
+                "Model": name,
+                "Accuracy": accuracy_score(y_test, y_pred),
+                "Precision": precision_score(y_test, y_pred),
+                "Recall": recall_score(y_test, y_pred),
+                "F1-Score": f1_score(y_test, y_pred)
+            })
+        st.dataframe(pd.DataFrame(results))
+
+        st.subheader("Confusion Matrix")
+        model_choice = st.selectbox("Choose model", list(models.keys()))
+        cm = confusion_matrix(y_test, models[model_choice].predict(X_test))
+        fig_cm, ax = plt.subplots()
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+        st.pyplot(fig_cm)
+
+        st.subheader("ROC Curve")
+        fig_roc = go.Figure()
+        for name, model in models.items():
+            y_score = model.predict_proba(X_test)[:, 1]
+            fpr, tpr, _ = roc_curve(y_test, y_score)
+            fig_roc.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=name))
+        fig_roc.update_layout(title='ROC Curve', xaxis_title='False Positive Rate', yaxis_title='True Positive Rate')
+        st.plotly_chart(fig_roc)
+
+        st.subheader("Upload New Data for Prediction")
+        uploaded_file = st.file_uploader("Upload CSV without target variable")
+        if uploaded_file:
+            new_data = pd.read_csv(uploaded_file)
+            new_data_encoded = new_data.copy()
+            for col in label_cols:
+                if col in new_data_encoded.columns:
+                    new_data_encoded[col] = LabelEncoder().fit_transform(new_data_encoded[col])
+            prediction = models[model_choice].predict(new_data_encoded)
+            new_data['Prediction'] = prediction
+            st.dataframe(new_data)
+            csv_out = new_data.to_csv(index=False).encode('utf-8')
+            st.download_button("Download Predictions", data=csv_out, file_name="predictions.csv", mime="text/csv")
 
 # ---------------------- 3. CLUSTERING ----------------------
 elif tabs == "Clustering":
