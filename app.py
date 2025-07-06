@@ -1,210 +1,166 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import seaborn as sns
 import matplotlib.pyplot as plt
-import plotly.express as px
-import plotly.graph_objects as go
+import seaborn as sns
+
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, roc_curve
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.linear_model import LinearRegression, Ridge, Lasso
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, precision_score, recall_score, f1_score, mean_squared_error, r2_score
 from mlxtend.frequent_patterns import apriori, association_rules
 from mlxtend.preprocessing import TransactionEncoder
 
-st.set_page_config(page_title="Hospitality Analytics Dashboard", layout="wide")
+import plotly.express as px
 
-@st.cache_data(show_spinner=False)
+st.set_page_config(layout="wide")
+st.title("🏨 Hospitality Analytics Dashboard")
+
+# Load Dataset
+@st.cache_data
 def load_data():
-    df = pd.read_csv("data/Hospitality_Synthetic_Survey.csv")
-    return df.sample(n=500, random_state=42)  # limit rows to improve performance
+    df = pd.read_csv("hotel_bookings_cleaned.csv")
+    return df
 
 df = load_data()
-st.sidebar.title("Navigation")
-tabs = st.sidebar.radio("Go to", ["Data Visualization", "Classification", "Clustering", "Association Rules", "Regression"])
 
-# ---------------------- 1. DATA VISUALIZATION ----------------------
-if tabs == "Data Visualization":
-    st.title("📊 Data Visualization")
+tabs = st.tabs(["📊 Data Overview", "🔍 Classification", "📈 Regression", "🔍 Clustering", "🧾 Association Rules"])
 
-    with st.expander("1. Age Group Distribution"):
-        st.bar_chart(df['Age Group'].value_counts())
+# -------- TAB 1: DATA OVERVIEW --------
+with tabs[0]:
+    st.header("📊 Dataset Overview")
+    st.write("### First Few Rows")
+    st.dataframe(df.head())
 
-    with st.expander("2. Income vs Comfort Spend Range"):
-        fig1 = px.histogram(df, x="Monthly Income", color="Comfort Spend Range", barmode='group')
-        st.plotly_chart(fig1)
+    st.write("### Basic Info")
+    st.write(df.describe())
 
-    with st.expander("3. Loyalty Tier Distribution"):
-        st.bar_chart(df['Loyalty Tier'].value_counts())
+    st.write("### Null Values")
+    st.write(df.isnull().sum())
 
-    with st.expander("4. Service Usage"):
-        service_counts = pd.Series(', '.join(df['Services Used']).split(', ')).value_counts()
-        st.bar_chart(service_counts)
+# -------- TAB 2: CLASSIFICATION --------
+with tabs[1]:
+    st.header("🔍 Predict Booking Cancellation")
+    df_cls = df.copy()
+    
+    # Preprocessing
+    df_cls = df_cls.dropna()
+    if 'is_canceled' not in df_cls.columns:
+        st.error("Missing target column: 'is_canceled'")
+    else:
+        X = df_cls.drop(columns=['is_canceled'])
+        y = df_cls['is_canceled']
+        X = pd.get_dummies(X, drop_first=True)
 
-    with st.expander("5. Booking Channel vs Room Type"):
-        fig2 = px.histogram(df, x="Booking Channel", color="Preferred Room Type", barmode='group')
-        st.plotly_chart(fig2)
-
-    with st.expander("6. Overall Experience Rating"):
-        st.bar_chart(df['Overall Experience Rating'].value_counts())
-
-    with st.expander("7. Correlation Heatmap (Numerical Ratings Only)"):
-        numeric_cols = df.select_dtypes(include=np.number)
-        fig3, ax = plt.subplots()
-        sns.heatmap(numeric_cols.corr(), annot=True, cmap="coolwarm", ax=ax)
-        st.pyplot(fig3)
-
-    with st.expander("8. Willingness to Try Offers vs Loyalty Program"):
-        fig4 = px.histogram(df, x="Willing to Try Offers", color="In Loyalty Program", barmode='group')
-        st.plotly_chart(fig4)
-
-    with st.expander("9. Frequent Issues Faced by Guests"):
-        issues_counts = pd.Series(', '.join(df['Issues Faced']).split(', ')).value_counts()
-        st.bar_chart(issues_counts.head(10))
-
-    with st.expander("10. Service Time Preferences"):
-        st.bar_chart(df['Service Time'].value_counts())
-
-# ---------------------- 2. CLASSIFICATION ----------------------
-elif tabs == "Classification":
-    st.title("🤖 Classification Models")
-
-    if st.button("Run Classification Models"):
-        df_clf = df[df['Willing to Try Offers'].isin(['Yes', 'No'])].copy()
-        label_cols = df_clf.select_dtypes(include='object').columns.drop(['Willing to Try Offers', 'Services Used', 'Preferred Bundles', 'Issues Faced', 'Nationality'])
-
-        for col in label_cols:
-            df_clf[col] = LabelEncoder().fit_transform(df_clf[col])
-
-        X = df_clf.drop(columns=['Willing to Try Offers', 'Services Used', 'Preferred Bundles', 'Issues Faced', 'Nationality'])
-        y = LabelEncoder().fit_transform(df_clf['Willing to Try Offers'])
-
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, stratify=y, test_size=0.2, random_state=42)
 
         models = {
-            "KNN": KNeighborsClassifier(),
-            "Decision Tree": DecisionTreeClassifier(),
+            "Logistic Regression": LogisticRegression(max_iter=1000),
+            "K-Nearest Neighbors": KNeighborsClassifier(),
             "Random Forest": RandomForestClassifier(),
             "Gradient Boosting": GradientBoostingClassifier()
         }
 
-        st.subheader("Model Evaluation Table")
         results = []
+
         for name, model in models.items():
             model.fit(X_train, y_train)
             y_pred = model.predict(X_test)
             results.append({
                 "Model": name,
-                "Accuracy": accuracy_score(y_test, y_pred),
-                "Precision": precision_score(y_test, y_pred),
-                "Recall": recall_score(y_test, y_pred),
-                "F1-Score": f1_score(y_test, y_pred)
+                "Accuracy": round(accuracy_score(y_test, y_pred)*100, 2),
+                "Precision": round(precision_score(y_test, y_pred)*100, 2),
+                "Recall": round(recall_score(y_test, y_pred)*100, 2),
+                "F1 Score": round(f1_score(y_test, y_pred)*100, 2)
             })
+
+        st.subheader("📋 Classification Performance")
         st.dataframe(pd.DataFrame(results))
 
-        st.subheader("Confusion Matrix")
-        model_choice = st.selectbox("Choose model", list(models.keys()))
-        cm = confusion_matrix(y_test, models[model_choice].predict(X_test))
-        fig_cm, ax = plt.subplots()
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-        st.pyplot(fig_cm)
+        selected_model = st.selectbox("🔀 Select model to show confusion matrix", list(models.keys()))
+        if selected_model:
+            y_pred = models[selected_model].predict(X_test)
+            cm = confusion_matrix(y_test, y_pred)
+            st.write("### Confusion Matrix")
+            fig, ax = plt.subplots()
+            sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["Stay", "Cancel"], yticklabels=["Stay", "Cancel"])
+            plt.ylabel("Actual")
+            plt.xlabel("Predicted")
+            st.pyplot(fig)
 
-        st.subheader("ROC Curve")
-        fig_roc = go.Figure()
-        for name, model in models.items():
-            y_score = model.predict_proba(X_test)[:, 1]
-            fpr, tpr, _ = roc_curve(y_test, y_score)
-            fig_roc.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=name))
-        fig_roc.update_layout(title='ROC Curve', xaxis_title='False Positive Rate', yaxis_title='True Positive Rate')
-        st.plotly_chart(fig_roc)
+# -------- TAB 3: REGRESSION --------
+with tabs[2]:
+    st.header("📈 Predict Average Daily Rate (ADR)")
+    df_reg = df.copy().dropna()
+    if 'adr' not in df_reg.columns:
+        st.error("Column 'adr' missing")
+    else:
+        X = df_reg.drop(columns=['adr'])
+        y = df_reg['adr']
+        X = pd.get_dummies(X, drop_first=True)
 
-        st.subheader("Upload New Data for Prediction")
-        uploaded_file = st.file_uploader("Upload CSV without target variable")
-        if uploaded_file:
-            new_data = pd.read_csv(uploaded_file)
-            new_data_encoded = new_data.copy()
-            for col in label_cols:
-                if col in new_data_encoded.columns:
-                    new_data_encoded[col] = LabelEncoder().fit_transform(new_data_encoded[col])
-            prediction = models[model_choice].predict(new_data_encoded)
-            new_data['Prediction'] = prediction
-            st.dataframe(new_data)
-            csv_out = new_data.to_csv(index=False).encode('utf-8')
-            st.download_button("Download Predictions", data=csv_out, file_name="predictions.csv", mime="text/csv")
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        model = LinearRegression()
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
 
-# ---------------------- 3. CLUSTERING ----------------------
-elif tabs == "Clustering":
-    st.title("🔍 Customer Clustering")
-    cluster_df = df.copy()
-    features = ['Spa Rating', 'Dining Rating', 'Room Service Rating', 'Cleanliness Rating', 'Overall Experience Rating']
-    X = cluster_df[features]
+        mse = mean_squared_error(y_test, y_pred)
+        r2 = r2_score(y_test, y_pred)
 
-    st.subheader("Elbow Method for Optimal Clusters")
-    distortions = []
-    K_range = range(2, 11)
-    for k in K_range:
-        kmeans = KMeans(n_clusters=k, random_state=42).fit(X)
-        distortions.append(kmeans.inertia_)
+        st.subheader("📊 Regression Metrics")
+        st.write(f"**MSE**: {round(mse, 2)}")
+        st.write(f"**R² Score**: {round(r2*100, 2)}%")
 
-    fig_elbow = px.line(x=list(K_range), y=distortions, labels={'x': 'k', 'y': 'Inertia'}, title="Elbow Curve")
-    st.plotly_chart(fig_elbow)
+        st.subheader("📉 Residual Plot")
+        residuals = y_test - y_pred
+        fig, ax = plt.subplots()
+        sns.histplot(residuals, kde=True)
+        st.pyplot(fig)
 
-    k = st.slider("Select Number of Clusters", 2, 10, 3)
-    kmeans = KMeans(n_clusters=k, random_state=42).fit(X)
-    cluster_df['Cluster'] = kmeans.labels_
+# -------- TAB 4: CLUSTERING --------
+with tabs[3]:
+    st.header("🔍 Customer Segmentation (KMeans)")
+    df_cluster = df.copy().dropna()
+    cluster_data = df_cluster.select_dtypes(include=np.number)
+    scaler = StandardScaler()
+    cluster_scaled = scaler.fit_transform(cluster_data)
 
-    st.subheader("Customer Segmentation Table")
-    persona = cluster_df.groupby('Cluster')[features].mean().round(2)
-    st.dataframe(persona)
+    k = st.slider("Select number of clusters", 2, 5, 4)
+    kmeans = KMeans(n_clusters=k, random_state=42)
+    df_cluster['cluster'] = kmeans.fit_predict(cluster_scaled)
 
-    st.subheader("Download Cluster-Labelled Data")
-    csv_cluster = cluster_df.to_csv(index=False).encode('utf-8')
-    st.download_button("Download Clustered Data", data=csv_cluster, file_name="clustered_data.csv", mime="text/csv")
+    pca = PCA(n_components=2)
+    components = pca.fit_transform(cluster_scaled)
+    df_cluster['PC1'] = components[:, 0]
+    df_cluster['PC2'] = components[:, 1]
 
-# ---------------------- 4. ASSOCIATION RULES ----------------------
-elif tabs == "Association Rules":
-    st.title("🔗 Association Rule Mining")
-    ar_df = df.copy()
-    transactions = [x.split(', ') for x in ar_df['Services Used'].dropna()]
+    st.subheader("📌 Cluster Plot")
+    fig = px.scatter(df_cluster, x='PC1', y='PC2', color='cluster', title="Customer Segments (PCA View)")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("🧾 Cluster Profile (Mean Values)")
+    st.dataframe(df_cluster.groupby('cluster').mean().round(2))
+
+# -------- TAB 5: ASSOCIATION RULES --------
+with tabs[4]:
+    st.header("🧾 Association Rule Mining")
+    df_ar = df[['meal', 'deposit_type', 'customer_type', 'market_segment']].dropna().astype(str)
+    records = df_ar.apply(lambda row: list(row), axis=1).tolist()
+
     te = TransactionEncoder()
-    te_ary = te.fit(transactions).transform(transactions)
-    ar_data = pd.DataFrame(te_ary, columns=te.columns_)
-    freq_items = apriori(ar_data, min_support=0.05, use_colnames=True)
-    rules = association_rules(freq_items, metric="confidence", min_threshold=0.6)
-    rules = rules.sort_values("confidence", ascending=False).head(10)
-    st.dataframe(rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']])
+    te_ary = te.fit(records).transform(records)
+    df_trans = pd.DataFrame(te_ary, columns=te.columns_)
 
-# ---------------------- 5. REGRESSION ----------------------
-elif tabs == "Regression":
-    st.title("📈 Regression Models")
-    reg_df = df.copy()
-    reg_df['Monthly Income'] = reg_df['Monthly Income'].map({
-        '<25K': 20000, '25K–50K': 37500, '51K–75K': 62500,
-        '76K–1L': 88000, '>1L': 120000
-    })
-    X = reg_df[['Spa Rating', 'Dining Rating', 'Room Service Rating', 'Cleanliness Rating', 'Overall Experience Rating']]
-    y = reg_df['Monthly Income']
+    frequent_itemsets = apriori(df_trans, min_support=0.05, use_colnames=True)
+    rules = association_rules(frequent_itemsets, metric="lift", min_threshold=1.0)
 
-    models = {
-        "Linear Regression": LinearRegression(),
-        "Ridge": Ridge(),
-        "Lasso": Lasso(),
-        "Decision Tree": DecisionTreeRegressor()
-    }
+    st.subheader("📋 Top 10 Rules")
+    st.dataframe(rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']].head(10))
 
-    st.subheader("Model Performance Summary")
-    reg_results = []
-    for name, model in models.items():
-        model.fit(X, y)
-        y_pred = model.predict(X)
-        reg_results.append({
-            "Model": name,
-            "R2 Score": model.score(X, y),
-            "MAE": np.mean(abs(y - y_pred)),
-            "RMSE": np.sqrt(np.mean((y - y_pred)**2))
-        })
-    st.dataframe(pd.DataFrame(reg_results))
+    st.markdown("✅ Use these rules to create bundles, upsell services, and design marketing campaigns.")
+
