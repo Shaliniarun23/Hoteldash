@@ -24,7 +24,7 @@ st.title("🏨 Hospitality Analytics Dashboard")
 # Load Dataset
 @st.cache_data
 def load_data():
-    df = pd.read_csv("hotel_bookings_cleaned.xlsx")
+    df = pd.read_excel("hotel_bookings_cleaned.xlsx")
     return df
 
 df = load_data()
